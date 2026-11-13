@@ -1,0 +1,5 @@
+# Development: tests and Windows executable build
+-r requirements.txt
+
+pytest>=8
+pyinstaller>=6.18
