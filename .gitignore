@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# PyInstaller output: publish dist/RocktStand.exe as a release asset instead
+build/
+dist/
+*.spec
+
+# Measurement logs written by the application
+log_*.txt
+medicion_rango_*.txt

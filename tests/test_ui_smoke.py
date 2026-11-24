@@ -31,7 +31,7 @@ def _save_dialog_returns(monkeypatch, path):
 
 
 def test_window_shows_logo_and_english_title(window):
-    assert window.windowTitle() == "RocktStand v0.3.0 - Rocket Stand Test Software"
+    assert window.windowTitle() == "RocktStand v0.3.1 - Rocket Stand Test Software"
     logo = window.verticalLayout_panel.itemAt(0).widget()
     assert not logo.pixmap().isNull()
     assert not logo.pixmap().hasAlphaChannel()

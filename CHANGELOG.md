@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v0.3.1 - 2026-11-24
 
 - User interface available in English and Spanish, using Qt Linguist
   translation files (`src/translations/`). A **Language** menu saves the choice;
