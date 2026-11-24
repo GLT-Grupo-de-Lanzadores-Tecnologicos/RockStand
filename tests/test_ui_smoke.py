@@ -138,3 +138,30 @@ def test_axis_labels_are_plain_numbers(app):
     axis = PlainNumberAxis(orientation="left")
     assert axis.tickStrings([0, 100, 200], 1.0, 100) == ["0", "100", "200"]
     assert axis.tickStrings([0.0, 0.25, 0.5], 1.0, 0.25) == ["0", "0.25", "0.5"]
+
+
+def test_calibration_reading_ignores_the_zero_filter(window):
+    window.on_measurement(0.0, 0.003, 1)  # inside the zero band
+    assert window.lbl_force.text() == "0.00 N"
+    assert window._latest_reading_in_display_unit() == pytest.approx(0.003 * STANDARD_GRAVITY)
+
+
+def test_zero_filter_flattens_noise_and_follows_the_unit(window):
+    window.on_measurement(0.0, 0.001, 1)  # 0.0098 N of noise
+    window.on_measurement(0.1, -0.002, 2)
+    assert window.lbl_force.text() == "0.00 N"
+    window.refresh_plot()
+    _x_data, y_data = window.curve.getData()
+    assert list(y_data) == [0.0, 0.0]
+
+    threshold_n = window.measurements.zero_filter.threshold_n
+    window.rb_unit_gf.setChecked(True)
+    assert window.sb_zero_threshold.suffix() == " gf"
+    assert window.sb_zero_threshold.value() == pytest.approx(
+        threshold_n / STANDARD_GRAVITY * 1000, abs=0.1
+    )
+
+    window.gb_zero_filter.setChecked(False)
+    assert not window.measurements.zero_filter.enabled
+    window.on_measurement(0.2, 0.001, 3)
+    assert window.lbl_force.text() == "1.00 gf"

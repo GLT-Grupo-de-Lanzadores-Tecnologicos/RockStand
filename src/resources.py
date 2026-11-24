@@ -9,6 +9,7 @@ SOURCE_ROOT = Path(__file__).resolve().parent
 
 MAIN_WINDOW_UI = "ui/main_window.ui"
 LOGO_PNG = "assets/logo.png"
+TRANSLATIONS_DIR = "translations"
 
 
 def resource_path(relative_path: str) -> str:

@@ -56,6 +56,7 @@ its signals, so `MainWindow` never touches the thread directly.
 | `simple_protocol.py`     | Turn one reply line into `MeasurementLine`, `OkLine` or `ErrorLine`  |
 | `serial_port_service.py` | List available ports; never raises, returns an error message instead |
 | `measurement_service.py` | Sample buffer (4000 points), relative time, tare offset, peak force  |
+| `zero_filter.py`         | Dead band with hysteresis that turns the noise around zero into `0`  |
 | `calibration_service.py` | New scale factor from a known load, with sanity limits               |
 | `unit_conversion.py`     | `N` / `kgf` / `gf` conversion; parsing of values such as `"333 gf"`  |
 | `txt_export_service.py`  | TXT file format, range export, `TxtRecorder` for live recording      |
@@ -74,7 +75,8 @@ its signals, so `MainWindow` never touches the thread directly.
 
 | Module         | Responsibility                                                         |
 | -------------- | ---------------------------------------------------------------------- |
-| `main.py`      | Creates the `QApplication`, sets the icon, shows the window            |
+| `main.py`      | Creates the `QApplication`, sets the icon and language, shows the window |
+| `i18n.py`      | Installs the Qt translators; saves the language chosen in the menu     |
 | `app_info.py`  | Application name, version and organisation (single source of truth)    |
 | `resources.py` | Resolves data file paths from source and inside the PyInstaller bundle |
 
@@ -84,6 +86,14 @@ its signals, so `MainWindow` never touches the thread directly.
   **Tare** button stores an offset in `MeasurementService` and does not send
   anything to the Arduino. Clearing the plot keeps the tare.
 - **Settings are locked while recording**, so a file never mixes units or signs.
+- **The zero filter runs after the tare** inside `MeasurementService`, so the
+  plot, the read-outs and the recorded file all show the same values. The tare
+  uses the unfiltered reading, so it also removes offsets hidden by the filter.
+- **Source strings are in English.** Every user-visible string goes through
+  `self.tr()`, `QCoreApplication.translate()` or `QT_TRANSLATE_NOOP`, and
+  Spanish comes from `translations/rocktstand_es.qm`. The translators are
+  installed in `main.py` before the window is built, which is why a language
+  change applies on the next start. See [translations.md](translations.md).
 - **Peak force** is the maximum corrected force since the last clear, starting
   from zero (a run with only negative forces reports a peak of `0`).
 - **The sample buffer is bounded** to keep plotting fast. Long runs should be

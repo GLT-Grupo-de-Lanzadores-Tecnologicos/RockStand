@@ -10,6 +10,7 @@ from PyQt5 import uic
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
+    QActionGroup,
     QApplication,
     QDialog,
     QFileDialog,
@@ -21,6 +22,7 @@ from PyQt5.QtWidgets import (
     QSizePolicy,
 )
 
+import i18n
 from app_info import APP_NAME, APP_SUBTITLE, APP_VERSION, ORGANIZATION
 from domain_models import STANDARD_GRAVITY, ForceSample, LoadCellType, PlotMode, Unit
 from resources import LOGO_PNG, MAIN_WINDOW_UI, resource_path
@@ -35,7 +37,7 @@ from services.txt_export_service import (
     ensure_txt_extension,
     export_measurements,
 )
-from services.unit_conversion import newtons_to_unit
+from services.unit_conversion import newtons_to_unit, unit_to_newtons
 from ui.calibrate_dialog import CalibrateDialog
 from ui.plot_axis import PlainNumberAxis
 from ui.x_range_selection import XRangeSelectionController
@@ -49,8 +51,9 @@ LONG_MESSAGE_MS = 8000
 WINDOW_CHROME_HEIGHT_PX = 70
 WINDOW_TITLE_BAR_ALLOWANCE_PX = 40
 
-STATUS_DISCONNECTED = "Disconnected"
-STATUS_PORT_ERROR = "Port error"
+# Decimals of the zero filter threshold, per display unit.
+ZERO_THRESHOLD_DECIMALS = {Unit.N: 3, Unit.KGF: 4, Unit.GF: 1}
+
 EMPTY_TEXT = "-"
 
 
@@ -66,6 +69,7 @@ class MainWindow(QMainWindow):
         self._init_serial()
         self._setup_plot()
         self._setup_panel()
+        self._setup_language_menu()
         self._connect_signals()
         self._setup_timers()
         self.refresh_ports()
@@ -75,13 +79,14 @@ class MainWindow(QMainWindow):
     def _init_state(self) -> None:
         self.unit = Unit.N
         self.plot_mode = PlotMode.ACCUMULATED
-        self.load_cell_type = LoadCellType.TENSION
+        self.load_cell_type = LoadCellType.BENDING
         self.measurements = MeasurementService()
         self.recorder = TxtRecorder()
         self.is_reading_active = True
 
         self.available_ports: list[str] = []
         self.port_scan_error: Optional[str] = None
+        self.showing_port_error = False
         self.pending_port: Optional[str] = None
         self.connected_port: Optional[str] = None
 
@@ -97,8 +102,8 @@ class MainWindow(QMainWindow):
     def _setup_plot(self) -> None:
         self.plot = self.widget_graph
         self.plot.plotItem.setAxisItems({"left": PlainNumberAxis(orientation="left")})
-        self.plot.setTitle("Force vs Time")
-        self.plot.setLabel("bottom", "Time", units="s")
+        self.plot.setTitle(self.tr("Force vs Time"))
+        self.plot.setLabel("bottom", self.tr("Time"), units="s")
         self.plot.getAxis("left").enableAutoSIPrefix(False)
         self._update_force_axis_label()
         self.curve = self.plot.plot([], [])
@@ -125,6 +130,7 @@ class MainWindow(QMainWindow):
         self.btn_x_cancel.hide()
         self._set_x_range_rows_visible(False)
         self._sync_settings_controls()
+        self._sync_zero_filter_controls()
 
         # Long status texts must not widen the panel; fix it at its natural width.
         self.lbl_status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
@@ -152,6 +158,15 @@ class MainWindow(QMainWindow):
         available -= WINDOW_TITLE_BAR_ALLOWANCE_PX
         self.resize(self.width(), max(self.height(), min(wanted, available)))
 
+    def _setup_language_menu(self) -> None:
+        """Check the language in use; a new choice applies on the next start."""
+        self.language_actions = {"en": self.action_lang_en, "es": self.action_lang_es}
+        group = QActionGroup(self)
+        group.setExclusive(True)
+        for action in self.language_actions.values():
+            group.addAction(action)
+        self._sync_language_menu()
+
     def _connect_signals(self) -> None:
         self.btn_refresh_ports.clicked.connect(self.refresh_ports)
         self.btn_connect.clicked.connect(self.connect_serial)
@@ -165,10 +180,16 @@ class MainWindow(QMainWindow):
             self.rb_plot_accumulated,
             self.rb_plot_sliding,
             self.rb_plot_paused,
-            self.rb_measurement_traction,
+            self.rb_measurement_bending,
             self.rb_measurement_compression,
         ):
             radio_button.toggled.connect(self._on_settings_changed)
+
+        self.gb_zero_filter.toggled.connect(self._on_zero_filter_changed)
+        self.sb_zero_threshold.valueChanged.connect(self._on_zero_filter_changed)
+
+        for code, action in self.language_actions.items():
+            action.triggered.connect(lambda _checked, code=code: self.change_language(code))
 
         self.btn_clear.clicked.connect(self.clear_plot)
         self.btn_tare.clicked.connect(self.do_tare)
@@ -201,7 +222,7 @@ class MainWindow(QMainWindow):
         return f"{self._to_display_unit(force_n):.2f} {self.unit.value}"
 
     def _update_force_axis_label(self) -> None:
-        self.plot.setLabel("left", f"Force ({self.unit.value})")
+        self.plot.setLabel("left", self.tr("Force ({0})").format(self.unit.value))
 
     def _sample_times(self) -> list[float]:
         return [sample.t_rel_s for sample in self.measurements]
@@ -212,11 +233,19 @@ class MainWindow(QMainWindow):
 
     def _set_reading_active(self, active: bool) -> None:
         self.is_reading_active = active
-        self.btn_toggle_reading.setText("Pause reading" if active else "Resume reading")
+        self.btn_toggle_reading.setText(
+            self.tr("Pause reading") if active else self.tr("Resume reading")
+        )
+
+    def _set_status(self, text: str, port_error: bool = False) -> None:
+        self.lbl_status.setText(text)
+        self.showing_port_error = port_error
 
     def _show_connected_state(self) -> None:
-        port_suffix = f" to {self.connected_port}" if self.connected_port else ""
-        self.lbl_status.setText(f"Connected{port_suffix}")
+        if self.connected_port:
+            self._set_status(self.tr("Connected to {0}").format(self.connected_port))
+        else:
+            self._set_status(self.tr("Connected"))
         self.btn_connect.setEnabled(False)
         self.btn_refresh_ports.setEnabled(False)
         self.btn_disconnect.setEnabled(True)
@@ -247,8 +276,10 @@ class MainWindow(QMainWindow):
         self.cb_ports.clear()
         if scan.ports:
             self.cb_ports.addItems(scan.ports)
+        elif scan.error_message:
+            self.cb_ports.addItem(self.tr("(error listing ports)"))
         else:
-            self.cb_ports.addItem("(error listing ports)" if scan.error_message else "(no ports)")
+            self.cb_ports.addItem(self.tr("(no ports)"))
         if selected in scan.ports:
             self.cb_ports.setCurrentText(selected)
         self.cb_ports.blockSignals(False)
@@ -256,24 +287,24 @@ class MainWindow(QMainWindow):
         if not self.serial.is_connected():
             self.btn_connect.setEnabled(bool(scan.ports))
             if scan.error_message:
-                self.lbl_status.setText(STATUS_PORT_ERROR)
-            elif self.lbl_status.text() == STATUS_PORT_ERROR:
-                self.lbl_status.setText(STATUS_DISCONNECTED)
+                self._set_status(self.tr("Port error"), port_error=True)
+            elif self.showing_port_error:
+                self._set_status(self.tr("Disconnected"))
 
     def connect_serial(self) -> None:
         port = self.cb_ports.currentText().strip()
         if port not in self.available_ports:
             QMessageBox.warning(
                 self,
-                "Serial ports",
-                self.port_scan_error or "No serial ports are available.",
+                self.tr("Serial ports"),
+                self.port_scan_error or self.tr("No serial ports are available."),
             )
             return
 
         if self.serial.is_connected():
             self.connected_port = self.connected_port or port
             self._show_connected_state()
-            self.on_warning("A connection is already active.")
+            self.on_warning(self.tr("A connection is already active."))
             return
 
         self.pending_port = port
@@ -281,7 +312,7 @@ class MainWindow(QMainWindow):
         self.btn_connect.setEnabled(False)
         self.btn_refresh_ports.setEnabled(False)
         self.btn_disconnect.setEnabled(True)
-        self.lbl_status.setText("Connecting...")
+        self._set_status(self.tr("Connecting..."))
         self.statusBar().clearMessage()
         self.serial.connect(port, int(self.cb_baud.currentText()))
 
@@ -297,16 +328,16 @@ class MainWindow(QMainWindow):
     def on_disconnected(self) -> None:
         self.pending_port = None
         self.connected_port = None
-        self.lbl_status.setText(STATUS_DISCONNECTED)
+        self._set_status(self.tr("Disconnected"))
         self._show_disconnected_state()
 
     def on_error(self, message: str) -> None:
         self.pending_port = None
         self.connected_port = None
-        self.lbl_status.setText("Error")
+        self._set_status(self.tr("Error"))
         self._show_disconnected_state()
         self._show_message(message)
-        QMessageBox.critical(self, "Serial error", message)
+        QMessageBox.critical(self, self.tr("Serial error"), message)
 
     def on_warning(self, message: str) -> None:
         if self.serial.is_connected() and self.connected_port:
@@ -314,7 +345,7 @@ class MainWindow(QMainWindow):
         self._show_message(message, LONG_MESSAGE_MS)
 
     def on_scale_updated(self, factor: float) -> None:
-        self._show_message(f"Firmware scale factor updated to {factor:.5f}")
+        self._show_message(self.tr("Firmware scale factor updated to {0}").format(f"{factor:.5f}"))
 
     # ---- measurements ----------------------------------------------------
 
@@ -336,7 +367,11 @@ class MainWindow(QMainWindow):
                 self.recorder.write(sample.t_rel_s, self._to_display_unit(sample.force_corr_n))
             except Exception as exc:
                 self.stop_recording()
-                QMessageBox.critical(self, "Recording", f"Error writing the recording file:\n{exc}")
+                QMessageBox.critical(
+                    self,
+                    self.tr("Recording"),
+                    self.tr("Error writing the recording file:\n{0}").format(exc),
+                )
                 return
 
         if self.x_selection.active:
@@ -374,20 +409,24 @@ class MainWindow(QMainWindow):
 
     def clear_plot(self) -> None:
         if self.recorder.is_recording:
-            QMessageBox.warning(self, "Recording active", "Cannot clear while recording.")
+            QMessageBox.warning(
+                self, self.tr("Recording active"), self.tr("Cannot clear while recording.")
+            )
             return
         self._reset_session_view()
 
     def do_tare(self) -> None:
         if not self.measurements.apply_tare_from_latest():
-            QMessageBox.information(self, "Tare", "No measurements have arrived yet.")
+            QMessageBox.information(self, self.tr("Tare"), self.tr("No measurements have arrived yet."))
             return
-        self._show_message("Software tare applied")
-        QMessageBox.information(self, "Tare", "Software tare applied.")
+        self._show_message(self.tr("Software tare applied"))
+        QMessageBox.information(self, self.tr("Tare"), self.tr("Software tare applied."))
 
     def toggle_reading(self) -> None:
         self._set_reading_active(not self.is_reading_active)
-        self._show_message("Reading resumed" if self.is_reading_active else "Reading paused")
+        self._show_message(
+            self.tr("Reading resumed") if self.is_reading_active else self.tr("Reading paused")
+        )
 
     # ---- settings panel --------------------------------------------------
 
@@ -411,12 +450,13 @@ class MainWindow(QMainWindow):
         elif self.rb_plot_paused.isChecked():
             self.plot_mode = PlotMode.PAUSED
 
-        if self.rb_measurement_traction.isChecked():
-            self.load_cell_type = LoadCellType.TENSION
+        if self.rb_measurement_bending.isChecked():
+            self.load_cell_type = LoadCellType.BENDING
         elif self.rb_measurement_compression.isChecked():
             self.load_cell_type = LoadCellType.COMPRESSION
 
         self._update_force_axis_label()
+        self._sync_zero_filter_controls()
         latest = self.measurements.latest
         if latest is not None:
             self.lbl_force.setText(self._format_force(latest.force_corr_n))
@@ -431,16 +471,60 @@ class MainWindow(QMainWindow):
         self.rb_plot_accumulated.setChecked(self.plot_mode == PlotMode.ACCUMULATED)
         self.rb_plot_sliding.setChecked(self.plot_mode == PlotMode.SLIDING)
         self.rb_plot_paused.setChecked(self.plot_mode == PlotMode.PAUSED)
-        self.rb_measurement_traction.setChecked(self.load_cell_type == LoadCellType.TENSION)
+        self.rb_measurement_bending.setChecked(self.load_cell_type == LoadCellType.BENDING)
         self.rb_measurement_compression.setChecked(
             self.load_cell_type == LoadCellType.COMPRESSION
+        )
+
+    # ---- zero filter -----------------------------------------------------
+
+    def _sync_zero_filter_controls(self) -> None:
+        """Show the zero filter settings in the current display unit."""
+        zero_filter = self.measurements.zero_filter
+        for widget in (self.gb_zero_filter, self.sb_zero_threshold):
+            widget.blockSignals(True)
+        self.gb_zero_filter.setChecked(zero_filter.enabled)
+        self.sb_zero_threshold.setDecimals(ZERO_THRESHOLD_DECIMALS[self.unit])
+        self.sb_zero_threshold.setSingleStep(10 ** -(ZERO_THRESHOLD_DECIMALS[self.unit] - 1))
+        self.sb_zero_threshold.setSuffix(f" {self.unit.value}")
+        self.sb_zero_threshold.setValue(self._to_display_unit(zero_filter.threshold_n))
+        for widget in (self.gb_zero_filter, self.sb_zero_threshold):
+            widget.blockSignals(False)
+
+    def _on_zero_filter_changed(self) -> None:
+        zero_filter = self.measurements.zero_filter
+        zero_filter.enabled = self.gb_zero_filter.isChecked()
+        zero_filter.threshold_n = unit_to_newtons(self.sb_zero_threshold.value(), self.unit)
+        zero_filter.reset()
+
+    # ---- language --------------------------------------------------------
+
+    def _sync_language_menu(self) -> None:
+        """Check the saved choice (it may not be loaded yet, see change_language)."""
+        selected = i18n.saved_language() or i18n.active_language()
+        for code, action in self.language_actions.items():
+            action.setChecked(code == selected)
+
+    def change_language(self, code: str) -> None:
+        i18n.save_language(code)
+        self._sync_language_menu()
+        if code == i18n.active_language():
+            return
+        QMessageBox.information(
+            self,
+            # Shown in both languages: the new one is not loaded until restart.
+            "Language / Idioma",
+            "The new language will be used the next time RocktStand starts.\n"
+            "El nuevo idioma se usará la próxima vez que se inicie RocktStand.",
         )
 
     # ---- calibration -----------------------------------------------------
 
     def _latest_reading_in_display_unit(self) -> Optional[float]:
-        latest = self.measurements.latest
-        return None if latest is None else self._to_display_unit(latest.force_corr_n)
+        # Unfiltered: with a wrong scale factor the reference weight may read
+        # inside the zero band, and the wizard needs its real value.
+        reading_n = self.measurements.latest_unfiltered_n
+        return None if reading_n is None else self._to_display_unit(reading_n)
 
     def open_calibrate(self) -> None:
         dialog = CalibrateDialog(
@@ -451,7 +535,11 @@ class MainWindow(QMainWindow):
         )
         if dialog.exec_() == QDialog.Accepted and dialog.scale_new is not None:
             self.serial.set_scale(dialog.scale_new)
-            self._show_message(f"Sending new scale factor to the firmware: {dialog.scale_new:.5f}")
+            self._show_message(
+                self.tr("Sending new scale factor to the firmware: {0}").format(
+                    f"{dialog.scale_new:.5f}"
+                )
+            )
 
     # ---- X range selection and export --------------------------------------
 
@@ -468,9 +556,9 @@ class MainWindow(QMainWindow):
         self._set_x_range_rows_visible(False)
 
     def export_selected_range(self) -> None:
-        title = "Export range"
+        title = self.tr("Export range")
         if self.measurements.latest is None:
-            QMessageBox.information(self, title, "There is no data to export.")
+            QMessageBox.information(self, title, self.tr("There is no data to export."))
             return
 
         x_min, x_max = self.x_selection.selected_range()
@@ -480,13 +568,15 @@ class MainWindow(QMainWindow):
             if x_min <= sample.t_rel_s <= x_max
         ]
         if not rows:
-            QMessageBox.information(self, title, "There are no points inside the selected range.")
+            QMessageBox.information(
+                self, title, self.tr("There are no points inside the selected range.")
+            )
             return
 
         timestamp = datetime.now()
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save selected range",
+            self.tr("Save selected range"),
             timestamp.strftime(RANGE_EXPORT_FILENAME_FORMAT),
             TXT_FILE_FILTER,
         )
@@ -496,9 +586,9 @@ class MainWindow(QMainWindow):
         try:
             export_measurements(ensure_txt_extension(path), timestamp, self.unit.value, rows)
         except Exception as exc:
-            QMessageBox.critical(self, title, f"Could not save the file:\n{exc}")
+            QMessageBox.critical(self, title, self.tr("Could not save the file:\n{0}").format(exc))
             return
-        QMessageBox.information(self, title, f"Exported {len(rows)} points.")
+        QMessageBox.information(self, title, self.tr("Exported {0} points.").format(len(rows)))
         self.cancel_x_selection()
 
     # ---- recording -------------------------------------------------------
@@ -511,7 +601,7 @@ class MainWindow(QMainWindow):
         timestamp = datetime.now()
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "Save measurement",
+            self.tr("Save measurement"),
             timestamp.strftime(RECORDING_FILENAME_FORMAT),
             TXT_FILE_FILTER,
         )
@@ -521,7 +611,9 @@ class MainWindow(QMainWindow):
         try:
             self.recorder.start(ensure_txt_extension(path), timestamp, self.unit.value)
         except Exception as exc:
-            QMessageBox.critical(self, "Recording", f"Could not open the file:\n{exc}")
+            QMessageBox.critical(
+                self, self.tr("Recording"), self.tr("Could not open the file:\n{0}").format(exc)
+            )
             return
 
         self._reset_session_view()
@@ -540,7 +632,11 @@ class MainWindow(QMainWindow):
         try:
             self.recorder.stop()
         except OSError as exc:
-            QMessageBox.critical(self, "Recording", f"Error closing the recording file:\n{exc}")
+            QMessageBox.critical(
+                self,
+                self.tr("Recording"),
+                self.tr("Error closing the recording file:\n{0}").format(exc),
+            )
 
     # ---- window ----------------------------------------------------------
 

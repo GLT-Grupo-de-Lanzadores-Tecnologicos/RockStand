@@ -5,10 +5,13 @@ from __future__ import annotations
 from typing import Sequence
 
 import pyqtgraph as pg
+from PyQt5.QtCore import QT_TRANSLATE_NOOP, QCoreApplication
 from PyQt5.QtWidgets import QLabel, QPushButton
 
-SELECT_TEXT = "Select X range"
-EXPORT_TEXT = "Export selected range"
+# Translated when shown (this class is not a QObject, so no self.tr()).
+TR_CONTEXT = "XRangeSelectionController"
+SELECT_TEXT = QT_TRANSLATE_NOOP("XRangeSelectionController", "Select X range")
+EXPORT_TEXT = QT_TRANSLATE_NOOP("XRangeSelectionController", "Export selected range")
 EMPTY_TEXT = "-"
 
 # Fraction of the recorded time span initially covered by the selection band.
@@ -45,7 +48,7 @@ class XRangeSelectionController:
     def activate(self, times: Sequence[float]) -> None:
         self.active = True
         self.region.show()
-        self.btn_primary.setText(EXPORT_TEXT)
+        self.btn_primary.setText(QCoreApplication.translate(TR_CONTEXT, EXPORT_TEXT))
         self.btn_cancel.show()
         self.ensure_initialized(times)
         self.update_labels()
@@ -53,7 +56,7 @@ class XRangeSelectionController:
     def deactivate(self) -> None:
         self.active = False
         self.region.hide()
-        self.btn_primary.setText(SELECT_TEXT)
+        self.btn_primary.setText(QCoreApplication.translate(TR_CONTEXT, SELECT_TEXT))
         self.btn_cancel.hide()
         self.lbl_xrange.setText(EMPTY_TEXT)
         self.lbl_xdelta.setText(EMPTY_TEXT)

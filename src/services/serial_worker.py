@@ -80,7 +80,7 @@ class SerialWorker(QObject):
         try:
             self._poll_loop()
         except Exception as exc:
-            self.error.emit(f"Serial read error: {exc}")
+            self.error.emit(self.tr("Serial read error: {0}").format(exc))
 
         self._close_port()
         self.disconnected.emit()
@@ -97,7 +97,7 @@ class SerialWorker(QObject):
             self._serial.reset_input_buffer()
             self._serial.reset_output_buffer()
         except Exception as exc:
-            self.error.emit(f"Could not open {self.port}: {exc}")
+            self.error.emit(self.tr("Could not open {0}: {1}").format(self.port, exc))
             return False
 
         self.connected.emit(self.port)
@@ -158,7 +158,9 @@ class SerialWorker(QObject):
             return
         rejected_factor = self._unconfirmed_scale
         self._unconfirmed_scale = None
-        self.warning.emit(f"Firmware rejected F:{rejected_factor:.5f} -> {message}")
+        self.warning.emit(
+            self.tr("Firmware rejected F:{0} -> {1}").format(f"{rejected_factor:.5f}", message)
+        )
 
     def _send(self, payload: str) -> None:
         if self._serial is not None:
@@ -191,7 +193,7 @@ class SerialThreadController(QObject):
 
     def connect(self, port: str, baud: int) -> None:
         if self._thread is not None:
-            self.warning.emit("A connection is already active.")
+            self.warning.emit(self.tr("A connection is already active."))
             return
 
         thread = QThread()
@@ -226,7 +228,7 @@ class SerialThreadController(QObject):
         if self._worker:
             self._worker.request_set_scale(factor)
         else:
-            self.warning.emit("There is no active connection to send the scale factor to.")
+            self.warning.emit(self.tr("There is no active connection to send the scale factor to."))
 
     def set_recording_indicator(self, recording_active: bool) -> None:
         if self._worker:
