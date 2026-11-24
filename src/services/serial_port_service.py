@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Iterable, Optional
 
+from PyQt5.QtCore import QCoreApplication
+
 ComportsFactory = Callable[[], Iterable[object]]
 
 
@@ -32,9 +34,17 @@ def scan_serial_ports(comports_factory: Optional[ComportsFactory] = None) -> Ser
         return SerialPortScanResult(ports=sorted(names, key=lambda name: (len(name), name)))
     except ModuleNotFoundError as exc:
         if exc.name == "serial":
-            message = "Cannot list ports: pyserial is not installed in this environment."
+            message = QCoreApplication.translate(
+                "SerialPortService",
+                "Cannot list ports: pyserial is not installed in this environment."
+            )
         else:
-            message = f"Cannot list ports: required module '{exc.name}' is missing."
+            message = QCoreApplication.translate(
+                "SerialPortService", "Cannot list ports: required module '{0}' is missing."
+            ).format(exc.name)
         return SerialPortScanResult(ports=[], error_message=message)
     except Exception as exc:
-        return SerialPortScanResult(ports=[], error_message=f"Cannot list serial ports: {exc}")
+        message = QCoreApplication.translate(
+            "SerialPortService", "Cannot list serial ports: {0}"
+        ).format(exc)
+        return SerialPortScanResult(ports=[], error_message=message)

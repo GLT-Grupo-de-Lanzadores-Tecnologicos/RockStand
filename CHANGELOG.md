@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- User interface available in English and Spanish, using Qt Linguist
+  translation files (`src/translations/`). A **Language** menu saves the choice;
+  it applies on the next start. See `docs/translations.md`.
+- The **Tension** load cell type is now called **Bending** (*Flexión* in Spanish).
+- Zero filter: readings closer to zero than a configurable threshold (default
+  `0.05 N`, with hysteresis) are shown, plotted and recorded as `0`, so the
+  plot is a flat line with no load. It can be turned off in the side panel.
+
 ## v0.3.0 - 2026-11-13
 
 Repository clean-up for publication by GLT UTN Haedo.

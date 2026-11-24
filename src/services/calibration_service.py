@@ -12,6 +12,15 @@ from domain_models import (
 )
 
 
+def QT_TRANSLATE_NOOP(_context: str, text: str) -> str:
+    """Mark a message for Qt Linguist (pylupdate5) without importing Qt here.
+
+    The UI translates ``CalibrationResult.error`` with the same context.
+    """
+    return text
+
+
+
 def compute_scale(data: CalibrationInput) -> CalibrationResult:
     """Return the scale factor that makes the reading match the known load.
 
@@ -23,22 +32,24 @@ def compute_scale(data: CalibrationInput) -> CalibrationResult:
     change by more than ``MAX_ALLOWED_SCALE_RATIO``.
     """
     if data.known_value == 0:
-        return CalibrationResult(error="The known value must be non-zero.")
+        return CalibrationResult(error=QT_TRANSLATE_NOOP("CalibrationService", "The known value must be non-zero."))
 
     if abs(data.captured_reading) < CALIBRATION_MIN_READING:
-        return CalibrationResult(error="The captured reading is almost zero.")
+        return CalibrationResult(error=QT_TRANSLATE_NOOP("CalibrationService", "The captured reading is almost zero."))
 
     if data.scale_current == 0:
-        return CalibrationResult(error="The current scale factor cannot be zero.")
+        return CalibrationResult(error=QT_TRANSLATE_NOOP("CalibrationService", "The current scale factor cannot be zero."))
 
     scale_new = data.scale_current * (data.captured_reading / data.known_value)
     if not math.isfinite(scale_new):
-        return CalibrationResult(error="The new scale factor is not a valid number.")
+        return CalibrationResult(error=QT_TRANSLATE_NOOP("CalibrationService", "The new scale factor is not a valid number."))
 
     change_ratio = abs(scale_new / data.scale_current)
     if not (1 / MAX_ALLOWED_SCALE_RATIO <= change_ratio <= MAX_ALLOWED_SCALE_RATIO):
         return CalibrationResult(
-            error="The new scale factor differs too much from the current one."
+            error=QT_TRANSLATE_NOOP(
+                "CalibrationService", "The new scale factor differs too much from the current one."
+            )
         )
 
     return CalibrationResult(scale_new=scale_new)

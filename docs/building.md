@@ -37,6 +37,7 @@ This runs PyInstaller in one-file, windowed mode and produces
 | ------------------------ | ---------------------- |
 | `src/ui/main_window.ui`  | `ui/main_window.ui`    |
 | `src/assets/logo.png`    | `assets/logo.png`      |
+| `src/translations/rocktstand_es.qm` | `translations/rocktstand_es.qm` |
 
 and uses `src/assets/logo.ico` as the executable icon. At runtime
 `src/resources.py` finds these files through `sys._MEIPASS`.

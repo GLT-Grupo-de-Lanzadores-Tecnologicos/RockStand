@@ -16,7 +16,9 @@ rocketry research group of **UTN Facultad Regional Haedo** (Argentina).
 - Live *Force vs Time* plot (accumulated, 10 s sliding window, or paused).
 - Force shown in `N`, `kgf` or `gf`; current and peak force read-outs.
 - Software tare.
-- Tension or compression load cell mounting (sign inversion).
+- Bending or compression load cell mounting (sign inversion).
+- Zero filter: the noise around zero is shown as a flat line at `0`.
+- User interface in English and Spanish (**Language** menu).
 - Guided single-point calibration that updates the HX711 scale factor.
 - Recording of a whole session to `.txt`, flushed continuously to disk.
 - Export of a selected time range of the plot to `.txt`.
@@ -69,6 +71,13 @@ Other controls:
 - **Clear** empties the plot and restarts the time axis (disabled while recording).
 - Units, plot mode and load cell type are locked while a recording is active.
 - Starting a recording clears the plot so that the file starts at `t = 0`.
+- **Zero filter** (on by default, threshold `0.05 N`): readings closer to zero
+  than the threshold are shown, plotted and recorded as exactly `0`, so the
+  plot is a flat line with no load. Readings above it keep their exact value.
+  Once at zero, a reading must exceed twice the threshold to leave it, so noise
+  at the edge does not flicker. **Tare** always uses the unfiltered reading.
+- **Language** menu: English or Español. The choice is saved and applies the
+  next time the application starts; the first time, the system language is used.
 
 The on-screen buffer keeps the most recent 4000 samples. The application asks
 for a sample every 100 ms, but the real rate is set by the firmware (each reply
@@ -182,7 +191,7 @@ The result is `dist/RocktStand.exe`.
 | ----------------------------- | -------------------------------------------------------------- |
 | `(no ports)` in the port list | Cable, USB-serial driver, another program holding the COM port |
 | Connected but no data         | Baud rate (`115200`), correct firmware flashed, HX711 wiring   |
-| Readings have the wrong sign  | Switch **Load cell type** between Tension and Compression      |
+| Readings have the wrong sign  | Switch **Load cell type** between Bending and Compression      |
 | Readings are off by a factor  | Run the calibration wizard                                     |
 | Calibrate button disabled     | It is enabled only while connected                             |
 

@@ -15,6 +15,7 @@ EXE_NAME = "RocktStand"
 DATA_FILES = [
     (SRC / "ui" / "main_window.ui", "ui"),
     (SRC / "assets" / "logo.png", "assets"),
+    (SRC / "translations" / "rocktstand_es.qm", "translations"),
 ]
 
 # Optional pyqtgraph extras and build tools that the application never uses.

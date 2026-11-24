@@ -36,7 +36,7 @@ class PlotMode(str, Enum):
 class LoadCellType(str, Enum):
     """Mounting of the load cell; compression readings are sign-inverted."""
 
-    TENSION = "tension"
+    BENDING = "bending"
     COMPRESSION = "compression"
 
 
